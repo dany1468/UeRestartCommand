@@ -80,7 +80,7 @@ compile_live_coding();
 save_and_restart_editor()
 
 # Save and Exit
-save_and_exit()
+save_and_exit_editor()
 
 # Save only
 save_all_dirty_packages() 
@@ -131,7 +131,7 @@ ue-python exec "compile_live_coding()"
 ue-python exec "save_and_restart_editor()"
 
 # Save and Exit
-ue-python exec "save_and_exit()"
+ue-python exec "save_and_exit_editor()"
 
 # Save only
 ue-python exec "save_all_dirty_packages()"
@@ -142,6 +142,77 @@ ue-python exec "exit_editor()"
 # Restart only
 ue-python exec "restart_editor()"
 ```
+
+## ヘッダ変更後のリビルド (`Scripts/ue-dev`)
+
+Live Coding はヘッダの変更・新しい `UCLASS`・`UPROPERTY`/`UFUNCTION` の追加を
+適用できません。これらにはフルビルドが必要で、フルビルドには Editor を閉じる
+必要があります。そして **Editor は自分自身を閉じた後の処理を担当できません**。
+
+`Scripts/ue-dev.cmd` はこの一連の流れをコマンド 1 つで実行します。
+
+```
+Scripts\ue-dev.cmd rebuild -Project path\to\Your.uproject -WaitReady
+```
+
+1. **このプロジェクトの** Editor プロセスを特定して `save_and_exit_editor()` を
+   送り、プロセスが実際に終了するまで待ちます。
+   **Editor が起動していなければそのままビルドに進みます** —— クラッシュ後でも
+   動くという、Editor 内ツールには原理的にできないことです。
+2. `.uproject` の `EngineAssociation` からエンジンを解決するため、
+   プロジェクトが紐づくエンジンと違うエンジンで誤ってビルドすることがありません。
+3. `Build.bat <Project>Editor Win64 <Config> <uproject> -waitmutex` を実行し、
+   **分散ビルドが**失敗した場合のみ `-NoUBA -NoXGE` で 1 度だけ再試行します。
+4. `Saved/PackageRestoreData.json` を退避し、「パッケージを復元しますか?」の
+   モーダルで無人実行が止まらないようにします。
+5. Editor を再起動し、`-WaitReady` 指定時は Python Remote Execution が
+   再び通るようになるまで待ちます。
+
+### サブコマンド
+
+| コマンド | 用途 |
+|---|---|
+| `rebuild` | 保存 → 終了 → ビルド → 再起動（主経路） |
+| `launch` | Editor を起動（エンジンパスの解決込み） |
+| `wait-ready` | Editor が応答するまで待機 |
+| `status` | 直前の `rebuild` の結果を表示 |
+| `resolve-engine` | どのエンジンにどう解決されるかを表示 |
+
+### オプション
+
+| オプション | 効果 |
+|---|---|
+| `-Project <path>` | `.uproject` かそれを含むディレクトリ。省略時はカレントから上に探索 |
+| `-Config <name>` | ビルド構成。既定は `Development` |
+| `-NoSave` | 保存せずに終了する |
+| `-NoLaunch` | ビルドのみ。再起動しない |
+| `-WaitReady` | 再起動後、Editor が応答するまで待つ |
+| `-Force` | Editor が終了しない場合に強制終了する。**既定は無効 —— 未保存の作業を失う可能性があります** |
+| `-NoLocalBuildFallback` | `-NoUBA -NoXGE` での再試行を行わない |
+| `-NoSkipPackageRestore` | `PackageRestoreData.json` を退避しない |
+| `-ExitTimeout` / `-ReadyTimeout` | 終了待ち / 起動待ちの秒数。既定は 120 / 300 |
+
+### 進捗の取得
+
+各段階が `<Project>/Saved/UeRestartCommand/build-status.json` に書き出され、
+最終状態は stdout にも JSON 1 行で出力されます。実行開始時に古い status と
+ログを削除するため、**前回の結果を今回のものと取り違える事故が起きません**。
+
+```jsonc
+{ "stage": "completed", "complete": true, "success": true, "exit_code": 0, ... }
+```
+
+`stage` は `waiting_for_editor_exit` → `building`
+[→ `building_local_fallback`] → `relaunching` → `completed` と遷移し、
+`build_failed` / `editor_exit_timeout` / `worker_error` が終端の失敗状態です。
+終了コードは成功なら `0`、ビルド失敗ならビルド自体の終了コード、
+エンジン解決・終了待ち・起動待ちの失敗はそれぞれ `3` / `4` / `5` です。
+
+### 必要な環境
+
+PowerShell 7 と、`PATH` 上の [uv](https://docs.astral.sh/uv/)
+（Editor の操作は `uvx ... ue-python` 経由なので個別のインストールは不要です）。
+エンジン解決を上書きしたい場合は環境変数 `UE_ENGINE_DIR` を設定してください。
 
 ## プロジェクト構造
 
@@ -162,7 +233,13 @@ UeRestartCommand/
 │       │   ├── EditorRestartLib.cpp         # C++ API 実装
 │       │   └── UeRestartCommand.cpp         # モジュール実装
 │       └── UeRestartCommand.Build.cs        # ビルド設定
+│
+├── Scripts/
+│   ├── ue-dev.ps1                  # ビルド/再起動オーケストレータ (PowerShell 7)
+│   └── ue-dev.cmd                  # 起動ラッパ。pwsh.exe を解決する
+│
 ├── UeRestartCommand.uplugin        # プラグイン定義
+├── THIRD_PARTY_NOTICES.md          # 移植元の著作権表示
 └── README.md                       # このファイル
 ```
 

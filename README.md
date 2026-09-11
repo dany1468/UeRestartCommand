@@ -82,7 +82,7 @@ compile_live_coding();
 save_and_restart_editor()
 
 # Save and Exit
-save_and_exit()
+save_and_exit_editor()
 
 # Save only
 save_all_dirty_packages() 
@@ -133,7 +133,7 @@ ue-python exec "compile_live_coding()"
 ue-python exec "save_and_restart_editor()"
 
 # Save and Exit
-ue-python exec "save_and_exit()"
+ue-python exec "save_and_exit_editor()"
 
 # Save only
 ue-python exec "save_all_dirty_packages()"
@@ -144,6 +144,81 @@ ue-python exec "exit_editor()"
 # Restart only
 ue-python exec "restart_editor()"
 ```
+
+## Rebuilding after a header change (`Scripts/ue-dev`)
+
+Live Coding cannot apply changes to headers, new `UCLASS`es, or new
+`UPROPERTY`/`UFUNCTION` declarations. Those need a full rebuild, and a full
+rebuild needs the Editor closed — which the Editor cannot orchestrate for
+itself.
+
+`Scripts/ue-dev.cmd` does the whole sequence in one command:
+
+```
+Scripts\ue-dev.cmd rebuild -Project path\to\Your.uproject -WaitReady
+```
+
+1. Finds the Editor process bound to *this* project and asks it to
+   `save_and_exit_editor()`, then waits for the process to actually exit.
+   **If no Editor is running it just builds** — so this still works after a
+   crash, which an in-Editor tool cannot do.
+2. Resolves the engine from the `.uproject`'s `EngineAssociation`, so the build
+   can never silently target a different engine than the project is associated
+   with.
+3. Runs `Build.bat <Project>Editor Win64 <Config> <uproject> -waitmutex`,
+   retrying once with `-NoUBA -NoXGE` if a *distributed* build failed.
+4. Moves `Saved/PackageRestoreData.json` aside so the "restore packages?" modal
+   cannot stall an unattended run.
+5. Relaunches the Editor and, with `-WaitReady`, waits until it accepts Python
+   remote execution again.
+
+### Commands
+
+| Command | Purpose |
+|---|---|
+| `rebuild` | save → exit → build → relaunch (the main loop) |
+| `launch` | Launch the Editor (resolves the engine for you) |
+| `wait-ready` | Block until the Editor accepts remote execution |
+| `status` | Print the result of the last `rebuild` |
+| `resolve-engine` | Show which engine this project resolves to, and how |
+
+### Options
+
+| Option | Effect |
+|---|---|
+| `-Project <path>` | `.uproject` or a directory containing one. Defaults to the nearest one at or above the current directory |
+| `-Config <name>` | Build configuration. Default `Development` |
+| `-NoSave` | Exit without saving dirty packages |
+| `-NoLaunch` | Build only; do not relaunch |
+| `-WaitReady` | After relaunch, wait until the Editor is reachable again |
+| `-Force` | Terminate the Editor if it will not exit. **Off by default — this can lose unsaved work** |
+| `-NoLocalBuildFallback` | Do not retry a failed build with `-NoUBA -NoXGE` |
+| `-NoSkipPackageRestore` | Leave `PackageRestoreData.json` in place |
+| `-ExitTimeout` / `-ReadyTimeout` | Seconds to wait for shutdown / readiness. Default 120 / 300 |
+
+### Machine-readable progress
+
+Every stage is written to `<Project>/Saved/UeRestartCommand/build-status.json`,
+and the final status is also printed to stdout as one JSON line. Stale status
+and logs are deleted at the start of each run, so a caller can never mistake the
+previous run's result for this one's.
+
+```jsonc
+{ "stage": "completed", "complete": true, "success": true, "exit_code": 0, ... }
+```
+
+`stage` moves through `waiting_for_editor_exit` → `building`
+[→ `building_local_fallback`] → `relaunching` → `completed`, with
+`build_failed`, `editor_exit_timeout` and `worker_error` as terminal failures.
+The process exit code is `0` on success, the build's own exit code on a build
+failure, and `3`/`4`/`5` for engine-resolution, shutdown-timeout and
+readiness-timeout failures.
+
+### Requirements
+
+PowerShell 7, and [uv](https://docs.astral.sh/uv/) on `PATH` (the Editor is
+driven through `uvx ... ue-python`, so no separate install is needed). Set
+`UE_ENGINE_DIR` to override engine resolution.
 
 ## Project Structure
 
@@ -164,7 +239,13 @@ UeRestartCommand/
 │       │   ├── EditorRestartLib.cpp         # C++ API Implementation
 │       │   └── UeRestartCommand.cpp         # Module Implementation
 │       └── UeRestartCommand.Build.cs        # Build Configuration
+│
+├── Scripts/
+│   ├── ue-dev.ps1                  # Build/restart orchestrator (PowerShell 7)
+│   └── ue-dev.cmd                  # Launcher; resolves pwsh.exe
+│
 ├── UeRestartCommand.uplugin        # Plugin Definition
+├── THIRD_PARTY_NOTICES.md          # Attribution for adapted material
 └── README.md                       # This file
 ```
 
