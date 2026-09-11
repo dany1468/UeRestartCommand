@@ -11,18 +11,31 @@ Unreal Editor の保存、終了、再起動、Live Coding コンパイルを簡
 
 ## セットアップ手順
 
-### 1. リポジトリのクローン
+### クイックセットアップ（推奨）
 
-```bash
-git clone https://github.com/SpirrowGames/UeRestartCommand.git
+UE5 プロジェクトのルートディレクトリで以下を実行します。このプラグインを
+`Plugins/` に git submodule として追加し、[`ue-dev`](#ヘッダ変更後のリビルド-scriptsue-dev)
+の go-task 連携をセットアップし、Python Remote Execution の設定まで一度に済ませます。
+
+```powershell
+irm https://raw.githubusercontent.com/dany1468/ue5-toolkit/main/install.ps1 | iex
 ```
 
-### 2. プラグインとして追加
+何を変更するか・実行前に中身を確認する方法は
+[ue5-toolkit](https://github.com/dany1468/ue5-toolkit) を参照してください。
 
-1. プロジェクトのルートディレクトリに `Plugins` フォルダがない場合は作成します。
-2. クローンした `UeRestartCommand` フォルダを `Plugins` フォルダの中にコピーします。
-3. Unreal Editor を起動し、**Edit > Plugins** から "UE Restart Command" が有効になっていることを確認します。
-4. Output Log に `Unreal Editor Restart Command - Python Module Loaded` が出力されていれば Python モジュールも読み込まれています。
+### 手動セットアップ
+
+#### 1. submodule として追加
+
+```bash
+git submodule add https://github.com/dany1468/UeRestartCommand.git Plugins/UeRestartCommand
+```
+
+#### 2. プラグインを有効化
+
+1. Unreal Editor を起動し、**Edit > Plugins** から "UE Restart Command" が有効になっていることを確認します。
+2. Output Log に `Unreal Editor Restart Command - Python Module Loaded` が出力されていれば Python モジュールも読み込まれています。
 
 > このプラグインは Python API を利用しているため、エンジンの標準プラグインである "Python Editor Script Plugin" が有効である必要があります。
 
@@ -236,7 +249,8 @@ UeRestartCommand/
 │
 ├── Scripts/
 │   ├── ue-dev.ps1                  # ビルド/再起動オーケストレータ (PowerShell 7)
-│   └── ue-dev.cmd                  # 起動ラッパ。pwsh.exe を解決する
+│   ├── ue-dev.cmd                  # 起動ラッパ。pwsh.exe を解決する
+│   └── BuildTasks.yml              # go-task タスク定義。導入先プロジェクトの Taskfile.yml から include する
 │
 ├── UeRestartCommand.uplugin        # プラグイン定義
 ├── THIRD_PARTY_NOTICES.md          # 移植元の著作権表示

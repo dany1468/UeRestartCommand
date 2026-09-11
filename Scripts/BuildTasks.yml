@@ -1,0 +1,93 @@
+# https://taskfile.dev
+#
+# Thin entry points. All orchestration logic lives in the plugin's
+# Scripts/ue-dev.ps1 so that it is versioned alongside the Python API it calls
+# and can be reused from any project.
+#
+# ue-dev resolves the engine from the .uproject's EngineAssociation, so there is
+# deliberately no engine path configured here.
+#
+# Task names carry the "ue:" prefix here (not just via the include namespace),
+# and Taskfile.yml includes this file with flatten: true to drop its own
+# namespace -- otherwise the two would stack into e.g. "restart:ue:build".
+# Requires go-task v3.33+.
+
+version: '3'
+
+run: once
+
+tasks:
+  # ========================================
+  # Build Tasks
+  # ========================================
+
+  ue:build:
+    desc: Build the project (closes a running Editor first; does not relaunch)
+    cmds:
+      - '"{{.UE_DEV}}" rebuild -Project "{{.PROJECT_PATH}}" -NoLaunch'
+
+  # ========================================
+  # Editor Lifecycle Tasks
+  # ========================================
+
+  ue:restart:
+    desc: Save and restart Unreal Editor (in-process; no rebuild)
+    cmds:
+      - |
+        uvx --from git+https://github.com/self-taught-code-tokushima/ue-python-cli ue-python exec "save_and_restart_editor()"
+
+  ue:save-and-exit:
+    desc: Save and exit Unreal Editor
+    cmds:
+      - |
+        uvx --from git+https://github.com/self-taught-code-tokushima/ue-python-cli ue-python exec "save_and_exit_editor()"
+
+  ue:launch:
+    desc: Launch Unreal Editor
+    cmds:
+      - '"{{.UE_DEV}}" launch -Project "{{.PROJECT_PATH}}"'
+
+  ue:wait-for-editor:
+    desc: Wait for Unreal Editor to become available
+    cmds:
+      - '"{{.UE_DEV}}" wait-ready -Project "{{.PROJECT_PATH}}"'
+
+  ue:rebuild-and-restart:
+    desc: Save, exit, build, relaunch and wait for startup (the main loop)
+    cmds:
+      # One process for the whole sequence. It waits for the editor process to
+      # actually exit rather than sleeping and hoping, records staged progress
+      # to Saved/UeRestartCommand/build-status.json, and reports a non-zero
+      # exit code when the build fails.
+      - '"{{.UE_DEV}}" rebuild -Project "{{.PROJECT_PATH}}" -WaitReady'
+
+  ue:status:
+    desc: Show the result of the last rebuild
+    cmds:
+      - '"{{.UE_DEV}}" status -Project "{{.PROJECT_PATH}}"'
+
+  ue:resolve-engine:
+    desc: Show which engine this project resolves to, and how
+    cmds:
+      - '"{{.UE_DEV}}" resolve-engine -Project "{{.PROJECT_PATH}}"'
+
+  # ========================================
+  # Hot Reload Tasks
+  # ========================================
+
+  ue:hot-reload:
+    desc: Hot reload code using Live Coding
+    cmds:
+      - |
+        uvx --from git+https://github.com/self-taught-code-tokushima/ue-python-cli ue-python exec "compile_live_coding()"
+
+  ue:hot-reload-and-wait:
+    # compile_live_coding() reports only that a compile STARTED, so there is
+    # nothing to wait on here beyond a fixed delay. For a result you can act on,
+    # use the engine's own LiveCodingToolset over MCP: it runs the compile
+    # synchronously and returns the ELiveCodingCompileResult, including
+    # Cancelled, which means the change set needs a full rebuild.
+    desc: Hot reload, then pause (see note - no real completion signal available)
+    cmds:
+      - task: ue:hot-reload
+      - pwsh -NoProfile -Command "Write-Host 'Waiting for Live Coding compilation...'; Start-Sleep -Seconds 10"

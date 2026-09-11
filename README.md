@@ -13,18 +13,31 @@ An Unreal Engine 5 plugin to easily save, exit, restart Unreal Editor, and compi
 
 ## Setup Instructions
 
-### 1. Clone the Repository
+### Quick setup (recommended)
 
-```bash
-git clone https://github.com/SpirrowGames/UeRestartCommand.git
+Run this from your UE5 project's root directory. It adds this plugin as a git
+submodule under `Plugins/`, sets up the [`ue-dev`](#rebuilding-after-a-header-change-scriptsue-dev)
+go-task integration, and configures Python Remote Execution — all in one step:
+
+```powershell
+irm https://raw.githubusercontent.com/dany1468/ue5-toolkit/main/install.ps1 | iex
 ```
 
-### 2. Add as a Plugin
+See [ue5-toolkit](https://github.com/dany1468/ue5-toolkit) for exactly what
+it changes and how to inspect the script before running it.
 
-1. Create a `Plugins` folder in your project's root directory if it doesn't already exist.
-2. Copy the cloned `UeRestartCommand` folder into the `Plugins` folder.
-3. Launch Unreal Editor and ensure "UE Restart Command" is enabled under **Edit > Plugins**.
-4. If `Unreal Editor Restart Command - Python Module Loaded` is output to the Output Log, the Python module has also been loaded.
+### Manual setup
+
+#### 1. Add as a submodule
+
+```bash
+git submodule add https://github.com/dany1468/UeRestartCommand.git Plugins/UeRestartCommand
+```
+
+#### 2. Enable the plugin
+
+1. Launch Unreal Editor and ensure "UE Restart Command" is enabled under **Edit > Plugins**.
+2. If `Unreal Editor Restart Command - Python Module Loaded` is output to the Output Log, the Python module has also been loaded.
 
 > Since this plugin utilizes the Python API, the engine's standard "Python Editor Script Plugin" must be enabled.
 
@@ -242,7 +255,8 @@ UeRestartCommand/
 │
 ├── Scripts/
 │   ├── ue-dev.ps1                  # Build/restart orchestrator (PowerShell 7)
-│   └── ue-dev.cmd                  # Launcher; resolves pwsh.exe
+│   ├── ue-dev.cmd                  # Launcher; resolves pwsh.exe
+│   └── BuildTasks.yml              # go-task definitions; include this from your project's Taskfile.yml
 │
 ├── UeRestartCommand.uplugin        # Plugin Definition
 ├── THIRD_PARTY_NOTICES.md          # Attribution for adapted material
